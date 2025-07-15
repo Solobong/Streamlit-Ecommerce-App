@@ -86,7 +86,7 @@ The RFM analysis helps identify:
 Clone the repository and run the notebook:
 
 ```bash
-git clone https://github.com/Solobong/Customer-Segmentation-Clustering.git
+git clone https://github.com/Solobong/Streamlit-Ecommerce-App.git
 cd Customer-Segmentation-Clustering
 jupyter notebook
 ```
