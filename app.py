@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 import plotly.express as px
 import numpy as np
 import os
@@ -65,70 +67,124 @@ top_products = (
 fig1 = px.bar(top_products, x='Revenue', y='Description', orientation='h', title='Top Products by Revenue')
 st.plotly_chart(fig1, use_container_width=True)
 
+ # 3. Top Customers by Number of Transactions  
+st.subheader("📊 Top 10 Customers by Transaction Count")
+filtered_data = data1.dropna(subset=["CustomerID"])
+filtered_data["CustomerID"] = filtered_data["CustomerID"].astype(int)
+transaction_frequency = (
+    filtered_data.groupby("CustomerID")["InvoiceNo"]
+    .nunique()
+    .reset_index()
+    .rename(columns={"InvoiceNo": "Transaction Count"})
+    .sort_values(by="Transaction Count", ascending=False)
+    .head(10)
+)
+fig_line = plt.figure(figsize=(10, 5))
+sns.set(style='whitegrid')
+plt.plot(
+    transaction_frequency['CustomerID'].astype(str),
+    transaction_frequency['Transaction Count'],
+    marker='o',
+    linestyle='-',
+    color='teal',
+    linewidth=2
+)
+for i, val in enumerate(transaction_frequency['Transaction Count']):
+    plt.text(i, val + 0.2, str(val), ha='center', fontsize=12)
+plt.title('Top 10 Customers by Transaction Frequency', fontsize=14, weight='bold')
+plt.xlabel('Customer ID')
+plt.ylabel('Number of Transactions')
+plt.tight_layout()
+st.pyplot(fig_line)
+
 # 3. Top Customers by Revenue
 st.subheader("💰 Top 10 Customers by Revenue")
-top_customers = (
-    data1.groupby("CustomerID")["Revenue"]
+all_customer_revenue_generated = (
+    filtered_data.groupby("CustomerID")["Revenue"]
     .sum()
-    .sort_values(ascending=False)
-    .head(10)
     .reset_index()
+    .rename(columns={"Revenue": "Revenue_sum"})
+    .sort_values(by="Revenue_sum", ascending=False)
 )
+top_customers = all_customer_revenue_generated.head(10)
+fig_bar = plt.figure(figsize=(10, 6))
+plt.bar(top_customers['CustomerID'].astype(str), top_customers['Revenue_sum'], color='teal')
+plt.xlabel('Customer ID')
+plt.ylabel('Revenue Generated')
+plt.title('Top 10 Customers by Revenue')
+plt.xticks(rotation=45)
+plt.tight_layout()
+st.pyplot(fig_bar)
 
-top_customers["CustomerID"] = top_customers["CustomerID"].astype(str)
-
-fig2 = px.bar(top_customers, x='Revenue', y='CustomerID', orientation='h', title='Top Customers by Revenue')
-
-fig2.update_layout(yaxis=dict(title='CustomerID'), xaxis=dict(title='Revenue'))
-
-st.plotly_chart(fig2, use_container_width=True)
-
-# 4. Top Countries by Number of Transactions
+# 5. Top Countries by Number of Transactions
 st.subheader("🌍 Top Countries by Transactions")
-top_countries = (
+# Group and count transactions
+country_transactions = (
     data1.groupby("Country")["InvoiceNo"]
     .nunique()
-    .sort_values(ascending=False)
-    .head(10)
     .reset_index()
+    .rename(columns={"InvoiceNo": "TransactionCount"})
 )
-fig3 = px.bar(top_countries, x='Country', y='InvoiceNo', title='Top Countries by Number of Orders')
-st.plotly_chart(fig3, use_container_width=True)
 
-# 5. Monthly Revenue Trend
+# Optional: Log-transform for color balance
+country_transactions["TransactionCountLog"] = np.log1p(country_transactions["TransactionCount"])
+
+# Sort to get top 10
+top_countries = country_transactions.sort_values(by="TransactionCount", ascending=False).head(10)
+
+# Layout: map left, table right (or below on small screens)
+map_col, table_col = st.columns([2, 1])
+
+with map_col:
+    fig_map = px.choropleth(
+        country_transactions,
+        locations="Country",
+        locationmode="country names",
+        color="TransactionCountLog",
+        hover_name="Country",
+        hover_data={"TransactionCount": True, "TransactionCountLog": False},
+        color_continuous_scale="YlOrRd",
+        title="World Map of Transactions",
+    )
+
+    fig_map.update_layout(
+        margin={"r": 0, "t": 40, "l": 0, "b": 0},
+        geo=dict(showframe=False, showcoastlines=False),
+        height=500
+    )
+
+    st.plotly_chart(fig_map, use_container_width=True)
+
+with table_col:
+    st.markdown("### 🏆 Top 10 Countries")
+    st.dataframe(top_countries[["Country", "TransactionCount"]].reset_index(drop=True))
+
+
+# 6. Monthly Revenue Trend
 st.subheader("📅 Monthly Revenue Trend")
 data1['YearMonth'] = data1['InvoiceDate'].dt.to_period("M").astype(str)
 monthly_rev = data1.groupby("YearMonth")["Revenue"].sum().reset_index()
 fig4 = px.line(monthly_rev, x="YearMonth", y="Revenue", markers=True, title='Monthly Revenue')
 st.plotly_chart(fig4, use_container_width=True)
 
-# 6. Busiest Transaction Days
+# 7. Busiest Transaction Days
 st.subheader("📆 Busiest Days of the Week")
 
-# Create 'Weekday' column from InvoiceDate
+data1["Year"] = data1["InvoiceDate"].dt.year
 data1["Weekday"] = data1["InvoiceDate"].dt.day_name()
-
-# Group by weekday and count unique InvoiceNo (i.e. transactions)
-weekday_traffic = (
-    data1.groupby("Weekday")["InvoiceNo"]
-    .nunique()
-    .reset_index()
-)
-
-# Optional: Order weekdays properly
+weekday_year = data1[data1["Year"].isin([2016, 2017])]
+weekday_counts = weekday_year.groupby(["Year", "Weekday"])["InvoiceNo"].nunique().reset_index(name="TransactionCount")
 weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-weekday_traffic["Weekday"] = pd.Categorical(weekday_traffic["Weekday"], categories=weekday_order, ordered=True)
-weekday_traffic = weekday_traffic.sort_values("Weekday")
-
-# Plot line chart
+weekday_counts["Weekday"] = pd.Categorical(weekday_counts["Weekday"], categories=weekday_order, ordered=True)
+weekday_counts = weekday_counts.sort_values(["Year", "Weekday"])
 fig5 = px.line(
-    weekday_traffic,
+    weekday_counts,
     x="Weekday",
-    y="InvoiceNo",
+    y="TransactionCount",
+    color="Year",
     markers=True,
-    title="Transactions by Weekday"
+    title="Transactions by Weekday (2016 vs 2017)"
 )
-
 st.plotly_chart(fig5, use_container_width=True)
 
 # RFM Analysis
